@@ -1,7 +1,86 @@
-LIBPNG_URL = https://download.sourceforge.net/libpng/libpng-1.2.56.tar.gz
-libpng-1.2.56.tar.gz:
-	wget $(LIBPNG_URL)
+# Configuration
+LIBPNG_VERSION := 1.2.56
+LIBPNG_URL := https://download.sourceforge.net/libpng/libpng-$(LIBPNG_VERSION).tar.gz
+LIBPNG_DIR := libpng-$(LIBPNG_VERSION)
 
-libpng-1.2.56/: libpng-1.2.56.tar.gz
-	tar xf libpng-1.2.56.tar.gz
-	cd libpng-1.2.56 && patch -p0 < ../patches/libpng-nocrc.patch
+# Directories
+SRC_DIR := src
+PATCHES_DIR := patches
+SEEDS_DIR := seeds
+FINDINGS_DIR := findings
+FINDINGS_QEMU_DIR := findings-qemu
+
+# Compiler Flags
+CC_INSTRUMENTED := afl-clang-fast
+CC_VANILLA := gcc
+CFLAGS := -g -O1 -fsanitize=address
+LDFLAGS := -fsanitize=address
+
+.PHONY: all build fuzz fuzz-qemu clean download-libpng patch-libpng
+
+all: build
+
+# 1. Download libpng if not present
+$(LIBPNG_DIR):
+	wget $(LIBPNG_URL)
+	tar xf libpng-$(LIBPNG_VERSION).tar.gz
+
+# 2. Apply CRC Patch (Critical for effective fuzzing!)
+patch-libpng: $(LIBPNG_DIR)
+	cd $(LIBPNG_DIR) && patch -p0 < ../$(PATCHES_DIR)/libpng-nocrc.patch
+
+# 3. Build Instrumented Library (White-Box)
+build-instrumented-lib: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	CC=$(CC_INSTRUMENTED) CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" \
+	./configure --disable-shared --prefix=$(shell pwd)/install_instrumented && \
+	make -j$(nproc) && make install
+
+# 4. Build Harness (Instrumented)
+build-harness-instrumented: build-instrumented-lib
+	$(CC_INSTRUMENTED) $(SRC_DIR)/harness.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS) $(LDFLAGS) \
+		-o png_harness
+
+# 5. Main Build Target (Compiles Lib + Harness)
+build: build-harness-instrumented
+	@echo "✅ Build complete. Run 'make fuzz' to start."
+
+# 6. Run Fuzzing Campaign (White-Box)
+fuzz: build
+	mkdir -p $(FINDINGS_DIR)
+	AFL_SKIP_CPUFREQ=1 afl-fuzz -i $(SEEDS_DIR) -o $(FINDINGS_DIR) -x png.dict -- ./png_harness @@
+
+# --- BLACK-BOX / QEMU MODE TARGETS ---
+
+# 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
+build-vanilla-lib: $(LIBPNG_DIR)
+	# Ensure patch is applied here too so comparison is fair regarding CRC
+	cd $(LIBPNG_DIR) && patch -p0 < ../$(PATCHES_DIR)/libpng-nocrc.patch || true
+	cd $(LIBPNG_DIR) && \
+	CC=$(CC_VANILLA) CFLAGS="-g -O1" \
+	./configure --disable-shared --prefix=$(shell pwd)/install_vanilla && \
+	make -j$(nproc) && make install
+
+# 8. Build Harness (Vanilla)
+build-harness-vanilla: build-vanilla-lib
+	$(CC_VANILLA) $(SRC_DIR)/harness.c \
+		-I./install_vanilla/include \
+		-L./install_vanilla/lib \
+		-lpng12 -lz -lm \
+		-g -O1 \
+		-o png_harness_qemu
+
+# 9. Run QEMU Fuzzing Campaign (Black-Box)
+fuzz-qemu: build-harness-vanilla
+	mkdir -p $(FINDINGS_QEMU_DIR)
+	AFL_SKIP_CPUFREQ=1 afl-fuzz -Q -i $(SEEDS_DIR) -o $(FINDINGS_QEMU_DIR) -x png.dict -- ./png_harness_qemu @@
+
+# 10. Clean up artifacts (but keep downloaded libpng to save time)
+clean:
+	rm -rf $(FINDINGS_DIR) $(FINDINGS_QEMU_DIR) png_harness png_harness_qemu install_instrumented install_vanilla
+	rm -rf $(LIBPNG_DIR)/.libs $(LIBPNG_DIR)/.deps
+# 	@echo "Cleaned findings and binaries."
