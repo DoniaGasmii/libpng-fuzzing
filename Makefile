@@ -26,13 +26,12 @@ $(LIBPNG_DIR):
 
 # 2. Apply CRC Patch (Critical for effective fuzzing!)
 patch-libpng: $(LIBPNG_DIR)
-	cd $(LIBPNG_DIR) && patch -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch
-
+	cd $(LIBPNG_DIR) && patch --forward -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
 # 3. Build Instrumented Library (White-Box)
 build-instrumented-lib: patch-libpng
 	cd $(LIBPNG_DIR) && \
 	CC=$(CC_INSTRUMENTED) CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" \
-	./configure --disable-shared --prefix=$(shell pwd)/install_instrumented && \
+	./configure --disable-shared --prefix=$(shell pwd)/install_instrumented --host=x86_64-linux-gnu && \
 	make -j$(nproc) && make install
 
 # 4. Build Harness (Instrumented)
@@ -51,8 +50,11 @@ build: build-harness-instrumented
 # 6. Run Fuzzing Campaign (White-Box)
 fuzz: build
 	mkdir -p $(FINDINGS_DIR)
-	AFL_SKIP_CPUFREQ=1 afl-fuzz -i $(SEEDS_DIR) -o $(FINDINGS_DIR) -x png.dict -- ./png_harness @@
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
+	afl-fuzz -i $(SEEDS_DIR) -o $(FINDINGS_DIR) -x png.dict -- ./png_harness @@
 
+	
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
 # 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
