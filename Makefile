@@ -5,7 +5,6 @@ LIBPNG_DIR := libpng-$(LIBPNG_VERSION)
 
 # Directories
 SRC_DIR := src
-PATCHES_DIR := patches
 SEEDS_DIR := seeds
 FINDINGS_DIR := findings
 FINDINGS_QEMU_DIR := findings-qemu
@@ -27,7 +26,7 @@ $(LIBPNG_DIR):
 
 # 2. Apply CRC Patch (Critical for effective fuzzing!)
 patch-libpng: $(LIBPNG_DIR)
-	cd $(LIBPNG_DIR) && patch -p0 < ../$(PATCHES_DIR)/libpng-nocrc.patch
+	cd $(LIBPNG_DIR) && patch -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch
 
 # 3. Build Instrumented Library (White-Box)
 build-instrumented-lib: patch-libpng
