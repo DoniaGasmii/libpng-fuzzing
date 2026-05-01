@@ -1,7 +1,7 @@
 # Configuration
 LIBPNG_VERSION := 1.2.56
 LIBPNG_URL := https://download.sourceforge.net/libpng/libpng-$(LIBPNG_VERSION).tar.gz
-LIBPNG_DIR := libpng-$(LIBPNG_VERSION)
+LIBPNG_DIR := /opt/libpng-$(LIBPNG_VERSION)
 
 # Directories
 SRC_DIR := src
@@ -20,9 +20,9 @@ LDFLAGS := -fsanitize=address
 all: build
 
 # 1. Download libpng if not present
-$(LIBPNG_DIR):
-	wget $(LIBPNG_URL)
-	tar xf libpng-$(LIBPNG_VERSION).tar.gz
+# $(LIBPNG_DIR):
+# 	wget $(LIBPNG_URL)
+# 	tar xf libpng-$(LIBPNG_VERSION).tar.gz
 
 # 2. Apply CRC Patch (Critical for effective fuzzing!)
 patch-libpng: $(LIBPNG_DIR)
@@ -60,7 +60,7 @@ fuzz: build
 # 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
 build-vanilla-lib: $(LIBPNG_DIR)
 	# Ensure patch is applied here too so comparison is fair regarding CRC
-	cd $(LIBPNG_DIR) && patch -p0 < ../$(PATCHES_DIR)/libpng-nocrc.patch || true
+	cd $(LIBPNG_DIR) && patch -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
 	cd $(LIBPNG_DIR) && \
 	CC=$(CC_VANILLA) CFLAGS="-g -O1" \
 	./configure --disable-shared --prefix=$(shell pwd)/install_vanilla && \
