@@ -36,7 +36,7 @@ build-instrumented-lib: patch-libpng
 
 # 4. Build Harness (Instrumented)
 build-harness-instrumented: build-instrumented-lib
-	$(CC_INSTRUMENTED) $(SRC_DIR)/harness.c \
+	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_CVE-2016-10087.c \
 		-I./install_instrumented/include \
 		-L./install_instrumented/lib \
 		-lpng12 -lz -lm \
@@ -54,7 +54,7 @@ fuzz: build
 	export AFL_SKIP_CPUFREQ=1; \
 	afl-fuzz -i $(SEEDS_DIR) -o $(FINDINGS_DIR) -x png.dict -- ./png_harness @@
 
-	
+
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
 # 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
@@ -68,7 +68,7 @@ build-vanilla-lib: $(LIBPNG_DIR)
 
 # 8. Build Harness (Vanilla)
 build-harness-vanilla: build-vanilla-lib
-	$(CC_VANILLA) $(SRC_DIR)/harness.c \
+	$(CC_VANILLA) $(SRC_DIR)/harness_CVE-2016-10087.c \
 		-I./install_vanilla/include \
 		-L./install_vanilla/lib \
 		-lpng12 -lz -lm \
