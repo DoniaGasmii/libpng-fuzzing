@@ -1,5 +1,5 @@
 # Configuration
-LIBPNG_VERSION := 1.2.56
+LIBPNG_VERSION := 1.2.52
 LIBPNG_URL := https://download.sourceforge.net/libpng/libpng-$(LIBPNG_VERSION).tar.gz
 LIBPNG_DIR := /opt/libpng-$(LIBPNG_VERSION)
 
@@ -36,7 +36,7 @@ build-instrumented-lib: patch-libpng
 
 # 4. Build Harness (Instrumented)
 build-harness-instrumented: build-instrumented-lib
-	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_CVE-2016-10087.c \
+	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS.c \
 		-I./install_instrumented/include \
 		-L./install_instrumented/lib \
 		-lpng12 -lz -lm \
@@ -49,11 +49,18 @@ build: build-harness-instrumented
 
 # 6. Run Fuzzing Campaign (White-Box)
 fuzz: build
-	mkdir -p $(FINDINGS_DIR)
+	mkdir -p findings
 	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
 	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i $(SEEDS_DIR) -o $(FINDINGS_DIR) -x png.dict -- ./png_harness @@
+	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
 
+optifuzz: build 
+	mkdir -p $(FINDINGS_DIR) 
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
+	export AFL_SKIP_CPUFREQ=1; \ 
+	export AFL_FAST_CAL=1; \
+	export AFL_DISABLE_TRIM=0; \ 
+	afl-fuzz -i final_seeds/ -o opti_findings -x png.dict -t 100 -- ./png_harness
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 

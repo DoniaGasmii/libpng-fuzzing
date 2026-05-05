@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/opt/aflpp:${PATH}"
 
-ENV LIBPNG_VERSION=1.2.56
+ENV LIBPNG_VERSION=1.2.52
 ENV LIBPNG_DIR=/opt/libpng-${LIBPNG_VERSION}
 
 #  Install system dependencies FIRST (critical!)
