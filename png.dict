@@ -1,9 +1,57 @@
+# --- PNG signature ---
 header_png="\x89PNG\x0d\x0a\x1a\x0a"
-section_IHDR="IHDR"
-section_IDAT="IDAT"
-section_IEND="IEND"
-section_PLTE="PLTE"
-section_tEXt="tEXt"
-section_gAMA="gAMA"
-section_cHRM="cHRM"
-section_sRGB="sRGB"
+
+# --- Critical chunks ---
+IHDR="IHDR"
+IDAT="IDAT"
+IEND="IEND"
+PLTE="PLTE"
+
+# --- Transparency / palette ---
+tRNS="tRNS"
+bKGD="bKGD"
+
+# --- Color / gamma / chroma ---
+gAMA="gAMA"
+cHRM="cHRM"
+sRGB="sRGB"
+iCCP="iCCP"
+
+# --- Text chunks ---
+tEXt="tEXt"
+zTXt="zTXt"
+iTXt="iTXt"
+
+# --- Physical / metadata ---
+pHYs="pHYs"
+tIME="tIME"
+
+# --- Common length fields (big endian) ---
+len_0="\x00\x00\x00\x00"
+len_1="\x00\x00\x00\x01"
+len_small="\x00\x00\x00\x0d"
+len_large="\xff\xff\xff\xff"
+
+# --- Interesting integers ---
+int_max="\xff\xff\xff\xff"
+int_16="\x00\x00\xff\xff"
+int_1="\x00\x00\x00\x01"
+int_256="\x00\x00\x01\x00"
+
+# --- IHDR-specific fields ---
+bit_depth_1="\x01"
+bit_depth_2="\x02"
+bit_depth_4="\x04"
+bit_depth_8="\x08"
+bit_depth_16="\x10"
+
+color_gray="\x00"
+color_rgb="\x02"
+color_palette="\x03"
+color_rgba="\x06"
+
+compression_0="\x00"
+filter_0="\x00"
+interlace_0="\x00"
+interlace_1="\x01"
+
