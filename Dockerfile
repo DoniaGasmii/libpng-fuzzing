@@ -24,6 +24,8 @@ RUN apt-get update && apt-get install -y \
     qemu-user \
     # libpng build dependencies
     zlib1g-dev \
+    # gnuplot for visualizing fuzzing results (required by afl-plot)
+    gnuplot \
     && rm -rf /var/lib/apt/lists/*
 
 #  Build AFL++ (simpler target, avoids gcc_plugin issues)
