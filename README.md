@@ -34,6 +34,6 @@ afl-plot findings/default/ plot_output/
 afl-plot findings-qemu/default/ plot_output_qemu/
 
 # Crash triage
-afl-tmin -i findings/default/crashes/<id> -o poc_min.png -- ./png_harness @@
+afl-tmin -i findings/default/crashes/id:<id>,sig:11,... -o poc_min.png -- ./png_harness @@
 ASAN_OPTIONS=symbolize=1 ./png_harness poc_min.png
 ```
