@@ -54,13 +54,19 @@ fuzz: build
 	export AFL_SKIP_CPUFREQ=1; \
 	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
 
+min_fuzz: build 
+	mkdir -p $(FINDINGS_DIR) 
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
+	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
+
 optifuzz: build 
 	mkdir -p $(FINDINGS_DIR) 
 	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
 	export AFL_SKIP_CPUFREQ=1; \ 
 	export AFL_FAST_CAL=1; \
 	export AFL_DISABLE_TRIM=0; \ 
-	afl-fuzz -i final_seeds/ -o opti_findings -x png.dict -t 100 -- ./png_harness
+	afl-fuzz -i minimized_seeds/ -o min_findings -x png.dict -- ./png_harness
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
