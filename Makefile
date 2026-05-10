@@ -43,9 +43,20 @@ build-harness-instrumented: build-instrumented-lib
 		$(CFLAGS) $(LDFLAGS) \
 		-o png_harness
 
+build-harness-min: build-instrumented-lib
+	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS_v2.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS) $(LDFLAGS) \
+		-o png_harness
+
 # 5. Main Build Target (Compiles Lib + Harness)
 build: build-harness-instrumented
 	@echo "✅ Build complete. Run 'make fuzz' to start."
+
+build-minimized: build-harness-min
+	@echo "✅ Build complete. Run 'make new_fuzz' to start with minimized seeds."
 
 # 6. Run Fuzzing Campaign (White-Box)
 fuzz: build
@@ -55,6 +66,12 @@ fuzz: build
 	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
 
 min_fuzz: build 
+	mkdir -p $(FINDINGS_DIR) 
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
+	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
+
+new_fuzz: build 
 	mkdir -p $(FINDINGS_DIR) 
 	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
 	export AFL_SKIP_CPUFREQ=1; \
