@@ -38,6 +38,29 @@ void read_fn(png_structp png_ptr, png_bytep out, png_size_t len) {
     }
 }
 
+/* --- push API callbacks ---------------------------------------------------
+   Called by libpng as it processes data fed through png_process_data.
+   info_cb fires once headers are parsed, row_cb fires per decoded row,
+   end_cb fires when IEND is reached.                                     */
+static void push_info_cb(png_structp png_ptr, png_infop info_ptr) {
+    png_set_expand(png_ptr);
+    png_set_scale_16(png_ptr);
+    png_set_gray_to_rgb(png_ptr);
+    png_set_alpha_mode(png_ptr, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
+    png_set_gamma(png_ptr, PNG_DEFAULT_sRGB, PNG_DEFAULT_sRGB);
+    png_read_update_info(png_ptr, info_ptr);
+}
+
+static void push_row_cb(png_structp png_ptr, png_bytep new_row,
+                        png_uint_32 row_num, int pass) {
+    (void)png_ptr; (void)new_row; (void)row_num; (void)pass;
+}
+
+static void push_end_cb(png_structp png_ptr, png_infop info_ptr) {
+    (void)png_ptr; (void)info_ptr;
+}
+/* ------------------------------------------------------------------------- */
+
 int main(int argc, char **argv) {
     FILE *fp = stdin;
     uint8_t *data = NULL;
@@ -77,116 +100,102 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png_ptr) {
-        free(data);
-        return 0;
-    }
+    /* ======================================================================
+       PATH 1: pull API  (pngread.c)
+       Synchronous pull-based parsing — your code drives libpng.
+       ====================================================================== */
+    do {
+        png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+        if (!png_ptr) break;
 
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr) {
-        png_destroy_read_struct(&png_ptr, NULL, NULL);
-        free(data);
-        return 0;
-    }
+        png_infop info_ptr = png_create_info_struct(png_ptr);
+        if (!info_ptr) { png_destroy_read_struct(&png_ptr, NULL, NULL); break; }
 
-    /* declared before setjmp so the error handler can destroy it even if
-       png_read_end has not been reached yet */
-    png_infop end_info = NULL;
+        png_infop end_info = NULL;
 
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
-        free(data);
-        return 0;
-    }
-
-    mem_buf buf = { data, size, 0 };
-    png_set_read_fn(png_ptr, &buf, read_fn);
-
-    png_read_info(png_ptr, info_ptr);
-
-    png_uint_32 width, height;
-    int bit_depth, color_type;
-    png_get_IHDR(png_ptr, info_ptr, &width, &height,
-                 &bit_depth, &color_type, NULL, NULL, NULL);
-
-    /* --- transforms -------------------------------------------------------
-       These expand the decoder pipeline: palette->RGB, <8-bit->8-bit,
-       tRNS->alpha, 16-bit->8-bit scaling, grayscale->RGB, alpha handling.
-       png_read_update_info must be called after setting transforms so that
-       png_get_rowbytes returns the post-transform row size.              */
-    png_set_expand(png_ptr);
-    png_set_scale_16(png_ptr);
-    png_set_gray_to_rgb(png_ptr);
-    png_set_alpha_mode(png_ptr, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
-    png_read_update_info(png_ptr, info_ptr);
-    /* --------------------------------------------------------------------- */
-
-    png_size_t rowbytes = png_get_rowbytes(png_ptr, info_ptr);
-
-    if (height == 0 || height > 5000 ||
-        rowbytes == 0 || rowbytes > 10000000) {
-        png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
-        free(data);
-        return 0;
-    }
-
-    png_bytep *rows = malloc(sizeof(png_bytep) * height);
-    if (!rows) {
-        png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
-        free(data);
-        return 0;
-    }
-
-    for (png_uint_32 i = 0; i < height; i++) {
-        rows[i] = malloc(rowbytes);
-        if (!rows[i]) {
-            for (png_uint_32 j = 0; j < i; j++) free(rows[j]);
-            free(rows);
+        if (setjmp(png_jmpbuf(png_ptr))) {
             png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
-            free(data);
-            return 0;
+            break;
         }
-    }
 
-    png_read_image(png_ptr, rows);
+        mem_buf buf = { data, size, 0 };
+        png_set_read_fn(png_ptr, &buf, read_fn);
 
-    for (png_uint_32 i = 0; i < height; i++) free(rows[i]);
-    free(rows);
+        /* unknown chunk handler: libpng calls this for every chunk type it
+           does not recognise, exercising the unknown-chunk processing code */
+        png_set_keep_unknown_chunks(png_ptr, PNG_HANDLE_CHUNK_ALWAYS, NULL, 0);
 
-    /* --- trailing chunks --------------------------------------------------
-       png_read_end processes any chunks after IDAT: tEXt, zTXt, iTXt,
-       tIME, etc. These have historically had parser bugs and are never
-       reached without this call.                                          */
-    end_info = png_create_info_struct(png_ptr);
-    png_read_end(png_ptr, end_info);
-    /* --------------------------------------------------------------------- */
+        png_read_info(png_ptr, info_ptr);
 
-    /* --- metadata accessors -----------------------------------------------
-       Explicitly touch every chunk accessor so the fuzzer can reach the
-       per-chunk parsing and validation code inside libpng.               */
-    png_textp text_ptr;
-    int num_text = 0;
-    png_get_text(png_ptr, info_ptr, &text_ptr, &num_text);
-    if (end_info)
-        png_get_text(png_ptr, end_info, &text_ptr, &num_text);
+        png_uint_32 width, height;
+        int bit_depth, color_type;
+        png_get_IHDR(png_ptr, info_ptr, &width, &height,
+                     &bit_depth, &color_type, NULL, NULL, NULL);
 
-    png_uint_32 res_x = 0, res_y = 0;
-    int unit_type = 0;
-    png_get_pHYs(png_ptr, info_ptr, &res_x, &res_y, &unit_type);
+        png_set_expand(png_ptr);
+        png_set_scale_16(png_ptr);
+        png_set_gray_to_rgb(png_ptr);
+        png_set_alpha_mode(png_ptr, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
+        png_color_16 background = {0, 128, 128, 128, 128};
+        png_set_background(png_ptr, &background, PNG_BACKGROUND_GAMMA_SCREEN, 0, 1.0);
+        png_set_gamma(png_ptr, PNG_DEFAULT_sRGB, PNG_DEFAULT_sRGB);
+        png_read_update_info(png_ptr, info_ptr);
 
-    png_timep mod_time = NULL;
-    png_get_tIME(png_ptr, info_ptr, &mod_time);
+        png_size_t rowbytes = png_get_rowbytes(png_ptr, info_ptr);
 
-    png_color_16p bkg = NULL;
-    png_get_bKGD(png_ptr, info_ptr, &bkg);
+        if (height == 0 || height > 5000 ||
+            rowbytes == 0 || rowbytes > 10000000) {
+            png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+            break;
+        }
 
-    double gamma_val = 0.0;
-    png_get_gAMA(png_ptr, info_ptr, &gamma_val);
-    /* --------------------------------------------------------------------- */
+        png_bytep *rows = malloc(sizeof(png_bytep) * height);
+        if (!rows) { png_destroy_read_struct(&png_ptr, &info_ptr, &end_info); break; }
 
-    png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+        for (png_uint_32 i = 0; i < height; i++) {
+            rows[i] = malloc(rowbytes);
+            if (!rows[i]) {
+                for (png_uint_32 j = 0; j < i; j++) free(rows[j]);
+                free(rows);
+                png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+                break;
+            }
+        }
+
+        png_read_image(png_ptr, rows);
+
+        for (png_uint_32 i = 0; i < height; i++) free(rows[i]);
+        free(rows);
+
+        end_info = png_create_info_struct(png_ptr);
+        png_read_end(png_ptr, end_info);
+
+        png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+    } while (0);
+
+    /* ======================================================================
+       PATH 2: push/progressive API  (pngpread.c)
+       libpng drives a separate internal state machine — you feed it data.
+       Covers streaming parser code paths the pull API never reaches.
+       ====================================================================== */
+    do {
+        png_structp push_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+        if (!push_ptr) break;
+
+        png_infop push_info = png_create_info_struct(push_ptr);
+        if (!push_info) { png_destroy_read_struct(&push_ptr, NULL, NULL); break; }
+
+        if (!setjmp(png_jmpbuf(push_ptr))) {
+            png_set_progressive_read_fn(push_ptr, NULL,
+                                        push_info_cb, push_row_cb, push_end_cb);
+            /* signature fed separately so fuzz data starts at byte 0 */
+            png_process_data(push_ptr, push_info, (png_bytep)PNG_SIG, 8);
+            png_process_data(push_ptr, push_info, data, size);
+        }
+
+        png_destroy_read_struct(&push_ptr, &push_info, NULL);
+    } while (0);
+
     free(data);
-
     return 0;
 }
