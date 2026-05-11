@@ -52,7 +52,7 @@ fuzz: build
 	mkdir -p findings
 	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
 	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
+	afl-fuzz -i minimized_seeds -o findings -x png.dict -- ./png_harness
 
 min_fuzz: build 
 	mkdir -p $(FINDINGS_DIR) 
@@ -60,13 +60,26 @@ min_fuzz: build
 	export AFL_SKIP_CPUFREQ=1; \
 	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
 
-optifuzz: build 
-	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
-	export AFL_SKIP_CPUFREQ=1; \ 
+
+
+# --- Persistent mode ---
+
+
+build-persistent: build-instrumented-lib
+	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS_persistent.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS) $(LDFLAGS) \
+		-o persistent_png_harness
+
+fuzz-persistent: build-persistent
+	mkdir -p persistent_findings
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
 	export AFL_FAST_CAL=1; \
-	export AFL_DISABLE_TRIM=0; \ 
-	afl-fuzz -i minimized_seeds/ -o min_findings -x png.dict -- ./png_harness
+	export AFL_DISABLE_TRIM=0; \
+	afl-fuzz -i interesting_seeds/ -o persistent_findings -x png.dict -- ./persistent_png_harness
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
@@ -81,7 +94,7 @@ build-vanilla-lib: $(LIBPNG_DIR)
 
 # 8. Build Harness (Vanilla)
 build-harness-vanilla: build-vanilla-lib
-	$(CC_VANILLA) $(SRC_DIR)/harness_CVE-2016-10087.c \
+	$(CC_VANILLA) $(SRC_DIR)/harness_SuaS.c \
 		-I./install_vanilla/include \
 		-L./install_vanilla/lib \
 		-lpng12 -lz -lm \
@@ -91,6 +104,7 @@ build-harness-vanilla: build-vanilla-lib
 # 9. Run QEMU Fuzzing Campaign (Black-Box)
 fuzz-qemu: build-harness-vanilla
 	mkdir -p $(FINDINGS_QEMU_DIR)
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
 	AFL_SKIP_CPUFREQ=1 afl-fuzz -Q -i $(SEEDS_DIR) -o $(FINDINGS_QEMU_DIR) -x png.dict -- ./png_harness_qemu @@
 
 # 10. Clean up artifacts (but keep downloaded libpng to save time)
