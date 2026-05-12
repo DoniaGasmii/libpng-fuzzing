@@ -1,100 +1,161 @@
-# Configuration
-LIBPNG_VERSION := 1.2.52
-LIBPNG_URL := https://download.sourceforge.net/libpng/libpng-$(LIBPNG_VERSION).tar.gz
-LIBPNG_DIR := /opt/libpng-$(LIBPNG_VERSION)
+# =============================================================
+# CS-412 Fuzzing Lab — libpng 1.2.52
+# =============================================================
 
-# Directories
-SRC_DIR := src
-SEEDS_DIR := seeds
-FINDINGS_DIR := findings
-FINDINGS_QEMU_DIR := findings-qemu
+LIBPNG_VERSION  := 1.2.52
+LIBPNG_DIR      := /opt/libpng-$(LIBPNG_VERSION)
 
-# Compiler Flags
-CC_INSTRUMENTED := afl-clang-fast
-CC_VANILLA := gcc
-CFLAGS := -g -O1 -fsanitize=address
-LDFLAGS := -fsanitize=address
+SRC_DIR         := src
+FINDINGS_DIR    := findings
+FINDINGS_QEMU   := findings-qemu
+FINDINGS_NOASAN := findings-no-asan
+FINDINGS_PERS   := findings-persistent
 
-.PHONY: all build fuzz fuzz-qemu clean download-libpng patch-libpng
+CC_AFL          := afl-clang-fast
+CC_VANILLA      := gcc
 
+CFLAGS_ASAN     := -g -O1 -fsanitize=address
+LDFLAGS_ASAN    := -fsanitize=address
+CFLAGS_NOASAN   := -g -O1
+SEEDS           := interesting_seeds
+
+.PHONY: all build fuzz fuzz-no-asan fuzz-persistent fuzz-qemu \
+        plot plot-qemu clean
+
+# -------------------------------------------------------------
+# Default target
+# -------------------------------------------------------------
 all: build
 
-# 1. Download libpng if not present
-# $(LIBPNG_DIR):
-# 	wget $(LIBPNG_URL)
-# 	tar xf libpng-$(LIBPNG_VERSION).tar.gz
-
-# 2. Apply CRC Patch (Critical for effective fuzzing!)
-patch-libpng: $(LIBPNG_DIR)
-	cd $(LIBPNG_DIR) && patch --forward -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
-# 3. Build Instrumented Library (White-Box)
-build-instrumented-lib: patch-libpng
+# -------------------------------------------------------------
+# 1. Patch libpng (remove CRC checks for effective fuzzing)
+# -------------------------------------------------------------
+patch-libpng:
 	cd $(LIBPNG_DIR) && \
-	CC=$(CC_INSTRUMENTED) CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" \
-	./configure --disable-shared --prefix=$(shell pwd)/install_instrumented --host=x86_64-linux-gnu && \
+	patch --forward -p0 \
+	  < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
+
+# -------------------------------------------------------------
+# 2. Build instrumented library (ASan + AFL++ instrumentation)
+# -------------------------------------------------------------
+build-lib-asan: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	CC=$(CC_AFL) CFLAGS="$(CFLAGS_ASAN)" LDFLAGS="$(LDFLAGS_ASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_instrumented \
+	            --host=x86_64-linux-gnu && \
 	make -j$(nproc) && make install
 
-# 4. Build Harness (Instrumented)
-build-harness-instrumented: build-instrumented-lib
-	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS.c \
+# -------------------------------------------------------------
+# 3. Build vanilla library (no instrumentation, no sanitizers)
+# -------------------------------------------------------------
+build-lib-vanilla: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	make distclean || true && \
+	CC=$(CC_VANILLA) CFLAGS="$(CFLAGS_NOASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_vanilla \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+
+# -------------------------------------------------------------
+# 4. Build harnesses
+# -------------------------------------------------------------
+build: build-lib-asan
+	$(CC_AFL) $(SRC_DIR)/harness.c \
 		-I./install_instrumented/include \
 		-L./install_instrumented/lib \
 		-lpng12 -lz -lm \
-		$(CFLAGS) $(LDFLAGS) \
+		$(CFLAGS_ASAN) $(LDFLAGS_ASAN) \
 		-o png_harness
+	@echo "✅ Instrumented harness built: png_harness"
 
-# 5. Main Build Target (Compiles Lib + Harness)
-build: build-harness-instrumented
-	@echo "✅ Build complete. Run 'make fuzz' to start."
+build-persistent: build-lib-asan
+	$(CC_AFL) $(SRC_DIR)/harness_persistent.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS_ASAN) $(LDFLAGS_ASAN) \
+		-o png_harness_persistent
+	@echo "✅ Persistent harness built: png_harness_persistent"
 
-# 6. Run Fuzzing Campaign (White-Box)
-fuzz: build
-	mkdir -p findings
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
-	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
-
-min_fuzz: build 
-	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
-	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
-
-optifuzz: build 
-	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
-	export AFL_SKIP_CPUFREQ=1; \ 
-	export AFL_FAST_CAL=1; \
-	export AFL_DISABLE_TRIM=0; \ 
-	afl-fuzz -i minimized_seeds/ -o min_findings -x png.dict -- ./png_harness
-
-# --- BLACK-BOX / QEMU MODE TARGETS ---
-
-# 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
-build-vanilla-lib: $(LIBPNG_DIR)
-	# Ensure patch is applied here too so comparison is fair regarding CRC
-	cd $(LIBPNG_DIR) && patch -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
-	cd $(LIBPNG_DIR) && \
-	CC=$(CC_VANILLA) CFLAGS="-g -O1" \
-	./configure --disable-shared --prefix=$(shell pwd)/install_vanilla && \
-	make -j$(nproc) && make install
-
-# 8. Build Harness (Vanilla)
-build-harness-vanilla: build-vanilla-lib
-	$(CC_VANILLA) $(SRC_DIR)/harness_CVE-2016-10087.c \
+build-vanilla: build-lib-vanilla
+	$(CC_VANILLA) $(SRC_DIR)/harness.c \
 		-I./install_vanilla/include \
 		-L./install_vanilla/lib \
 		-lpng12 -lz -lm \
-		-g -O1 \
+		$(CFLAGS_NOASAN) \
 		-o png_harness_qemu
+	@echo "✅ Vanilla harness built: png_harness_qemu"
 
-# 9. Run QEMU Fuzzing Campaign (Black-Box)
-fuzz-qemu: build-harness-vanilla
-	mkdir -p $(FINDINGS_QEMU_DIR)
-	AFL_SKIP_CPUFREQ=1 afl-fuzz -Q -i $(SEEDS_DIR) -o $(FINDINGS_QEMU_DIR) -x png.dict -- ./png_harness_qemu @@
+build-no-asan: build-lib-asan
+	$(CC_AFL) $(SRC_DIR)/harness.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS_NOASAN) \
+		-o png_harness_no_asan
+	@echo "✅ No-ASan harness built: png_harness_no_asan"
 
-# 10. Clean up artifacts (but keep downloaded libpng to save time)
+# -------------------------------------------------------------
+# 5. Fuzzing campaigns
+# -------------------------------------------------------------
+
+# Run 1 — main campaign: ASan + fork mode (white-box)
+fuzz: build
+	mkdir -p $(FINDINGS_DIR)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i $(SEEDS) -o $(FINDINGS_DIR) -x png.dict \
+	         -- ./png_harness
+
+# Run 2 — no sanitizer + fork mode (Q8 speed comparison)
+fuzz-no-asan: build-no-asan
+	mkdir -p $(FINDINGS_NOASAN)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i $(SEEDS) -o $(FINDINGS_NOASAN) -x png.dict \
+	         -- ./png_harness_no_asan
+
+# Run 3 — ASan + persistent mode (Q8 speed comparison)
+fuzz-persistent: build-persistent
+	mkdir -p $(FINDINGS_PERS)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i $(SEEDS) -o $(FINDINGS_PERS) -x png.dict \
+	         -- ./png_harness_persistent
+
+# Run 5 — QEMU mode / black-box (Q7)
+fuzz-qemu: build-vanilla
+	mkdir -p $(FINDINGS_QEMU)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -Q -i $(SEEDS) -o $(FINDINGS_QEMU) -x png.dict \
+	         -- ./png_harness_qemu @@
+
+# -------------------------------------------------------------
+# 6. Generate afl-plot output
+# -------------------------------------------------------------
+plot:
+	afl-plot $(FINDINGS_DIR)/default/ plot_output/
+
+plot-qemu:
+	afl-plot $(FINDINGS_QEMU)/default/ plot_output_qemu/
+
+plot-no-asan:
+	afl-plot $(FINDINGS_NOASAN)/default/ plot_output_no_asan/
+
+plot-persistent:
+	afl-plot $(FINDINGS_PERS)/default/ plot_output_persistent/
+
+# -------------------------------------------------------------
+# 7. Clean
+# -------------------------------------------------------------
 clean:
-	rm -rf $(FINDINGS_DIR) $(FINDINGS_QEMU_DIR) png_harness png_harness_qemu install_instrumented install_vanilla
-	rm -rf $(LIBPNG_DIR)/.libs $(LIBPNG_DIR)/.deps
-# 	@echo "Cleaned findings and binaries."
+	rm -rf $(FINDINGS_DIR) $(FINDINGS_QEMU) \
+	       $(FINDINGS_NOASAN) $(FINDINGS_PERS) \
+	       png_harness png_harness_persistent \
+	       png_harness_qemu png_harness_no_asan \
+	       install_instrumented install_vanilla \
+	       plot_output/ plot_output_qemu/ \
+	       plot_output_no_asan/ plot_output_persistent/
