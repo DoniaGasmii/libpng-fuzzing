@@ -125,6 +125,55 @@ fuzz-persistent: build-persistent
 	afl-fuzz -i $(SEEDS) -o $(FINDINGS_PERS) -x png.dict \
 	         -- ./png_harness_persistent
 
+# Run 4 — O0 optimization flag test (Q2 justification)
+build-O0: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	CC=$(CC_AFL) CFLAGS="-g -O0 -fsanitize=address" LDFLAGS="$(LDFLAGS_ASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_O0 \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+	$(CC_AFL) $(SRC_DIR)/harness.c \
+		-I./install_O0/include \
+		-L./install_O0/lib \
+		-lpng12 -lz -lm \
+		-g -O0 -fsanitize=address $(LDFLAGS_ASAN) \
+		-o png_harness_O0
+	@echo "✅ O0 harness built: png_harness_O0"
+
+fuzz-O0: build-O0
+	mkdir -p findings-O0
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i $(SEEDS) -o findings-O0 -x png.dict \
+	         -- ./png_harness_O0
+
+# Run 6 — LTO instrumentation (Q2/Q8 comparison)
+build-lto: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	CC=afl-clang-lto CFLAGS="$(CFLAGS_ASAN)" LDFLAGS="$(LDFLAGS_ASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_lto \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+	afl-clang-lto $(SRC_DIR)/harness.c \
+		-I./install_lto/include \
+		-L./install_lto/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS_ASAN) $(LDFLAGS_ASAN) \
+		-o png_harness_lto
+	@echo "✅ LTO harness built: png_harness_lto"
+
+fuzz-lto: build-lto
+	mkdir -p findings-lto
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i $(SEEDS) -o findings-lto -x png.dict \
+	         -- ./png_harness_lto
+
+plot-lto:
+	afl-plot findings-lto/default/ plot_output_lto/
+
 # Run 5 — QEMU mode / black-box (Q7)
 fuzz-qemu: build-vanilla
 	mkdir -p $(FINDINGS_QEMU)
@@ -153,9 +202,9 @@ plot-persistent:
 # -------------------------------------------------------------
 clean:
 	rm -rf $(FINDINGS_DIR) $(FINDINGS_QEMU) \
-	       $(FINDINGS_NOASAN) $(FINDINGS_PERS) \
+	       $(FINDINGS_NOASAN) $(FINDINGS_PERS) findings-O0 findings-lto \
 	       png_harness png_harness_persistent \
-	       png_harness_qemu png_harness_no_asan \
-	       install_instrumented install_vanilla \
+	       png_harness_qemu png_harness_no_asan png_harness_O0 png_harness_lto \
+	       install_instrumented install_vanilla install_O0 install_lto \
 	       plot_output/ plot_output_qemu/ \
-	       plot_output_no_asan/ plot_output_persistent/
+	       plot_output_no_asan/ plot_output_persistent/ plot_output_lto/
