@@ -1,8 +1,10 @@
 # CS-412 Software Security — Fuzzing Lab
 ## Fuzzing libpng with AFL++
 
-**Team:** Donia Gasmi, Louis Gogniat, Khaled Kerrouche, Srushti Singh
+**Team:** Donia Gasmi, Louis Gogniat, Khaled Kerrouche, Srushti 
+
 **Course:** CS-412 Software Security, EPFL Spring 2026
+
 **Target:** libpng 1.2.52
 
 ---
