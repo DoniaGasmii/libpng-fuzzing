@@ -1,0 +1,6 @@
+install_instrumented/
+install_vanilla/
+png_harness
+png_harness_persistent
+png_harness_qemu
+png_harness_no_asan
