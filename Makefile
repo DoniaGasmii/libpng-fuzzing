@@ -88,10 +88,19 @@ build-vanilla: build-lib-vanilla
 		-o png_harness_qemu
 	@echo "✅ Vanilla harness built: png_harness_qemu"
 
-build-no-asan: build-lib-asan
+build-lib-no-asan: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	make distclean || true && \
+	CC=$(CC_AFL) CFLAGS="$(CFLAGS_NOASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_no_asan \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+
+build-no-asan: build-lib-no-asan
 	$(CC_AFL) $(SRC_DIR)/harness.c \
-		-I./install_instrumented/include \
-		-L./install_instrumented/lib \
+		-I./install_no_asan/include \
+		-L./install_no_asan/lib \
 		-lpng12 -lz -lm \
 		$(CFLAGS_NOASAN) \
 		-o png_harness_no_asan
@@ -205,6 +214,6 @@ clean:
 	       $(FINDINGS_NOASAN) $(FINDINGS_PERS) findings-O0 findings-lto \
 	       png_harness png_harness_persistent \
 	       png_harness_qemu png_harness_no_asan png_harness_O0 png_harness_lto \
-	       install_instrumented install_vanilla install_O0 install_lto \
+	       install_instrumented install_vanilla install_O0 install_lto install_no_asan \
 	       plot_output/ plot_output_qemu/ \
 	       plot_output_no_asan/ plot_output_persistent/ plot_output_lto/
