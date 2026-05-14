@@ -16,6 +16,9 @@ CFLAGS := -g -O1 -fsanitize=address
 LDFLAGS := -fsanitize=address
 CFLAGS_NOASAN   := -g -O1
 
+FINDINGS_NOASAN := findings-no-asan
+CC_AFL          := afl-clang-fast
+
 .PHONY: all build fuzz fuzz-qemu clean download-libpng patch-libpng
 
 all: build
@@ -117,6 +120,25 @@ build-vanilla: build-lib-vanilla
 		-o png_harness_qemu
 	@echo "✅ Vanilla harness built: png_harness_qemu"
 
+
+build-lib-no-asan: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	make distclean || true && \
+	CC=$(CC_AFL) CFLAGS="$(CFLAGS_NOASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_no_asan \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+
+build-no-asan: build-lib-no-asan
+	$(CC_AFL) $(SRC_DIR)/harness_SuaS_v2.c \
+		-I./install_no_asan/include \
+		-L./install_no_asan/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS_NOASAN) \
+		-o png_harness_no_asan
+	@echo "✅ No-ASan harness built: png_harness_no_asan"
+
 # 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
 build-vanilla-lib: $(LIBPNG_DIR)
 	# Ensure patch is applied here too so comparison is fair regarding CRC
@@ -134,6 +156,13 @@ build-harness-vanilla: build-vanilla-lib
 		-lpng12 -lz -lm \
 		-g -O1 \
 		-o png_harness_qemu
+
+fuzz-no-asan: build-no-asan
+	mkdir -p $(FINDINGS_NOASAN)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i interesting_seeds -o $(FINDINGS_NOASAN) -x png.dict \
+	         -- ./png_harness_no_asan
 
 # Run 5 — QEMU mode / black-box (Q7)
 fuzz-qemu: build-vanilla
