@@ -71,11 +71,11 @@ min_fuzz: build
 	export AFL_SKIP_CPUFREQ=1; \
 	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
 
-new_fuzz: build 
+new_fuzz: build-minimized 
 	mkdir -p $(FINDINGS_DIR) 
 	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
 	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
+	afl-fuzz -i interesting_seeds -o minimized_findings -x png.dict -- ./png_harness
 
 optifuzz: build 
 	mkdir -p $(FINDINGS_DIR) 
