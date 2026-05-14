@@ -14,6 +14,10 @@ CC_INSTRUMENTED := afl-clang-fast
 CC_VANILLA := gcc
 CFLAGS := -g -O1 -fsanitize=address
 LDFLAGS := -fsanitize=address
+CFLAGS_NOASAN   := -g -O1
+
+FINDINGS_NOASAN := findings-no-asan
+CC_AFL          := afl-clang-fast
 
 .PHONY: all build fuzz fuzz-qemu clean download-libpng patch-libpng
 
@@ -43,55 +47,101 @@ build-harness-instrumented: build-instrumented-lib
 		$(CFLAGS) $(LDFLAGS) \
 		-o png_harness
 
+build-harness-min: build-instrumented-lib
+	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS_v2.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS) $(LDFLAGS) \
+		-o png_harness
+
+build-harness-opti: build-instrumented-lib
+	$(CC_INSTRUMENTED) $(SRC_DIR)/persistent_harness_SuaS_v2.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS) $(LDFLAGS) \
+		-o persistent_png_harness
+
 # 5. Main Build Target (Compiles Lib + Harness)
 build: build-harness-instrumented
-	@echo "✅ Build complete. Run 'make fuzz' to start."
+	@echo "Build complete. Run 'make fuzz' to start."
 
-# 6. Run Fuzzing Campaign (White-Box)
-fuzz: build
-	mkdir -p findings
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
-	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
+build-minimized: build-harness-min
+	@echo "Build complete. Run 'make new_fuzz' to start with minimized seeds."
 
-min_fuzz: build 
+build-opti: build-harness-opti
+	@echo "Build complete. Run 'make optifuzz' to start with optimized seeds."
+
+
+new_fuzz: build-minimized 
 	mkdir -p $(FINDINGS_DIR) 
 	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
 	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
+	afl-fuzz -i interesting_seeds -o minimized_findings -x png.dict -- ./png_harness
 
-optifuzz: build 
+optifuzz: build-opti
 	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
-	export AFL_SKIP_CPUFREQ=1; \ 
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
 	export AFL_FAST_CAL=1; \
-	export AFL_DISABLE_TRIM=0; \ 
-	afl-fuzz -i minimized_seeds/ -o min_findings -x png.dict -- ./png_harness
+	export AFL_DISABLE_TRIM=0; \
+	afl-fuzz -i interesting_seeds/ -o persistent_findings_v2 -x png.dict -- ./persistent_png_harness
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
-# 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
-build-vanilla-lib: $(LIBPNG_DIR)
-	# Ensure patch is applied here too so comparison is fair regarding CRC
-	cd $(LIBPNG_DIR) && patch -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
+build-lib-vanilla: patch-libpng
 	cd $(LIBPNG_DIR) && \
-	CC=$(CC_VANILLA) CFLAGS="-g -O1" \
-	./configure --disable-shared --prefix=$(shell pwd)/install_vanilla && \
+	make distclean || true && \
+	CC=$(CC_VANILLA) CFLAGS="$(CFLAGS_NOASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_vanilla \
+	            --host=x86_64-linux-gnu && \
 	make -j$(nproc) && make install
 
-# 8. Build Harness (Vanilla)
-build-harness-vanilla: build-vanilla-lib
-	$(CC_VANILLA) $(SRC_DIR)/harness_CVE-2016-10087.c \
+build-vanilla: build-lib-vanilla
+	$(CC_VANILLA) $(SRC_DIR)/harness_SuaS_v2.c \
 		-I./install_vanilla/include \
 		-L./install_vanilla/lib \
 		-lpng12 -lz -lm \
-		-g -O1 \
+		$(CFLAGS_NOASAN) \
 		-o png_harness_qemu
+	@echo "Vanilla harness built: png_harness_qemu"
 
-# 9. Run QEMU Fuzzing Campaign (Black-Box)
-fuzz-qemu: build-harness-vanilla
-	mkdir -p $(FINDINGS_QEMU_DIR)
-	AFL_SKIP_CPUFREQ=1 afl-fuzz -Q -i $(SEEDS_DIR) -o $(FINDINGS_QEMU_DIR) -x png.dict -- ./png_harness_qemu @@
+# Build Non-ASan Library 
+
+build-lib-no-asan: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	make distclean || true && \
+	CC=$(CC_AFL) CFLAGS="$(CFLAGS_NOASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_no_asan \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+
+build-no-asan: build-lib-no-asan
+	$(CC_AFL) $(SRC_DIR)/harness_SuaS_v2.c \
+		-I./install_no_asan/include \
+		-L./install_no_asan/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS_NOASAN) \
+		-o png_harness_no_asan
+	@echo "No-ASan harness built: png_harness_no_asan"
+
+fuzz-no-asan: build-no-asan
+	mkdir -p $(FINDINGS_NOASAN)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -i interesting_seeds -o $(FINDINGS_NOASAN) -x png.dict \
+	         -- ./png_harness_no_asan
+
+# Run 5 — QEMU mode / black-box (Q7)
+fuzz-qemu: build-vanilla
+	mkdir -p findings_qemu
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -Q -i interesting_seeds/ -o findings_qemu -x png.dict \
+	         -- ./png_harness_qemu @@
 
 # 10. Clean up artifacts (but keep downloaded libpng to save time)
 clean:
