@@ -1,7 +1,7 @@
 # CS-412 Software Security — Fuzzing Lab
 ## Fuzzing libpng with AFL++
 
-**Team:** Donia Gasmi, Louis Gogniat, Khaled Kerouch, Srushti 
+**Team:** Donia Gasmi, Louis Gogniat, Khaled Kerouch, Srushti Singh
 
 **Course:** CS-412 Software Security, EPFL Spring 2026
 
@@ -15,7 +15,7 @@ This repository contains our fuzzing campaign against `libpng 1.2.52`
 using AFL++ with compile-time instrumentation and AddressSanitizer.
 We discovered 13 unique crashes caused by a `stack-use-after-scope`
 bug in `png_inflate()` (`pngrutil.c`), reachable via both `iCCP` and
-`zTXt` chunk handlers. The bug is fixed in libpng 1.2.53.
+`zTXt` chunk handlers. The bug was fixed in libpng 1.2.53.
 
 ---
 
