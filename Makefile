@@ -98,6 +98,15 @@ optifuzz: build-opti
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
+build-vanilla: build-lib-vanilla
+	$(CC_VANILLA) $(SRC_DIR)/harness_SuaS_v2.c \
+		-I./install_vanilla/include \
+		-L./install_vanilla/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS_NOASAN) \
+		-o png_harness_qemu
+	@echo "✅ Vanilla harness built: png_harness_qemu"
+
 # 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
 build-vanilla-lib: $(LIBPNG_DIR)
 	# Ensure patch is applied here too so comparison is fair regarding CRC
@@ -116,10 +125,13 @@ build-harness-vanilla: build-vanilla-lib
 		-g -O1 \
 		-o png_harness_qemu
 
-# 9. Run QEMU Fuzzing Campaign (Black-Box)
-fuzz-qemu: build-harness-vanilla
-	mkdir -p $(FINDINGS_QEMU_DIR)
-	AFL_SKIP_CPUFREQ=1 afl-fuzz -Q -i $(SEEDS_DIR) -o $(FINDINGS_QEMU_DIR) -x png.dict -- ./png_harness_qemu @@
+# Run 5 — QEMU mode / black-box (Q7)
+fuzz-qemu: build-vanilla
+	mkdir -p $(FINDINGS_QEMU)
+	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+	AFL_SKIP_CPUFREQ=1 \
+	afl-fuzz -Q -i interesting_seeds/ -o findings_qemu -x png.dict \
+	         -- ./png_harness_qemu @@
 
 # 10. Clean up artifacts (but keep downloaded libpng to save time)
 clean:
