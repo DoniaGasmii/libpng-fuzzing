@@ -36,15 +36,15 @@ build-instrumented-lib: patch-libpng
 
 # 4. Build Harness (Instrumented)
 build-harness-instrumented: build-instrumented-lib
-	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS.c \
+	$(CC_INSTRUMENTED) $(SRC_DIR)/persistent_harness_SuaS_v2.c \
 		-I./install_instrumented/include \
 		-L./install_instrumented/lib \
 		-lpng12 -lz -lm \
 		$(CFLAGS) $(LDFLAGS) \
-		-o png_harness
+		-o persistent_png_harness
 
 build-harness-min: build-instrumented-lib
-	$(CC_INSTRUMENTED) $(SRC_DIR)/harness_SuaS_v2.c \
+	$(CC_INSTRUMENTED) $(SRC_DIR)/persistent_harness_SuaS_v2.c \
 		-I./install_instrumented/include \
 		-L./install_instrumented/lib \
 		-lpng12 -lz -lm \
@@ -79,11 +79,11 @@ new_fuzz: build
 
 optifuzz: build 
 	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
-	export AFL_SKIP_CPUFREQ=1; \ 
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
 	export AFL_FAST_CAL=1; \
-	export AFL_DISABLE_TRIM=0; \ 
-	afl-fuzz -i minimized_seeds/ -o min_findings -x png.dict -- ./png_harness
+	export AFL_DISABLE_TRIM=0; \
+	afl-fuzz -i interesting_seeds/ -o persistent_findings_v2 -x png.dict -- ./persistent_png_harness
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
