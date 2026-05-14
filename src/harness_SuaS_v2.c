@@ -44,10 +44,9 @@ void read_fn(png_structp png_ptr, png_bytep out, png_size_t len) {
    end_cb fires when IEND is reached.                                     */
 static void push_info_cb(png_structp png_ptr, png_infop info_ptr) {
     png_set_expand(png_ptr);
-    png_set_scale_16(png_ptr);
+    png_set_strip_16(png_ptr);
     png_set_gray_to_rgb(png_ptr);
-    png_set_alpha_mode(png_ptr, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
-    png_set_gamma(png_ptr, PNG_DEFAULT_sRGB, PNG_DEFAULT_sRGB);
+    png_set_gamma(png_ptr, 2.2, 2.2);
     png_read_update_info(png_ptr, info_ptr);
 }
 
@@ -133,12 +132,11 @@ int main(int argc, char **argv) {
                      &bit_depth, &color_type, NULL, NULL, NULL);
 
         png_set_expand(png_ptr);
-        png_set_scale_16(png_ptr);
+        png_set_strip_16(png_ptr);
         png_set_gray_to_rgb(png_ptr);
-        png_set_alpha_mode(png_ptr, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
         png_color_16 background = {0, 128, 128, 128, 128};
         png_set_background(png_ptr, &background, PNG_BACKGROUND_GAMMA_SCREEN, 0, 1.0);
-        png_set_gamma(png_ptr, PNG_DEFAULT_sRGB, PNG_DEFAULT_sRGB);
+        png_set_gamma(png_ptr, 2.2, 2.2);
         png_read_update_info(png_ptr, info_ptr);
 
         png_size_t rowbytes = png_get_rowbytes(png_ptr, info_ptr);
