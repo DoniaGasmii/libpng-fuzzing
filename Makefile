@@ -14,6 +14,7 @@ CC_INSTRUMENTED := afl-clang-fast
 CC_VANILLA := gcc
 CFLAGS := -g -O1 -fsanitize=address
 LDFLAGS := -fsanitize=address
+CFLAGS_NOASAN   := -g -O1
 
 .PHONY: all build fuzz fuzz-qemu clean download-libpng patch-libpng
 
@@ -136,7 +137,7 @@ build-harness-vanilla: build-vanilla-lib
 
 # Run 5 — QEMU mode / black-box (Q7)
 fuzz-qemu: build-vanilla
-	mkdir -p $(FINDINGS_QEMU)
+	mkdir -p findings_qemu
 	AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
 	AFL_SKIP_CPUFREQ=1 \
 	afl-fuzz -Q -i interesting_seeds/ -o findings_qemu -x png.dict \
