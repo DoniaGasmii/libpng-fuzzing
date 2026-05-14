@@ -86,8 +86,8 @@ Output goes to `plot_output/`.
 
 | Target | Description | Command |
 |--------|-------------|---------|
-| Main campaign | ASan + fork mode | `make fuzz` |
-| Persistent mode | ASan + persistent mode (faster) | `make fuzz-persistent` |
+| Main campaign | ASan + fork mode | `make new_fuzz` |
+| Persistent mode | ASan + persistent mode (faster) | `make optifuzz` |
 | No sanitizer | Fork mode, no ASan (Q8 comparison) | `make fuzz-no-asan` |
 | QEMU mode | Binary-only, black-box (Q7) | `make fuzz-qemu` |
 | O0 flag test | Optimization comparison (Q2) | `make fuzz-O0` |
