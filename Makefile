@@ -51,12 +51,23 @@ build-harness-min: build-instrumented-lib
 		$(CFLAGS) $(LDFLAGS) \
 		-o png_harness
 
+build-harness-opti: build-instrumented-lib
+	$(CC_INSTRUMENTED) $(SRC_DIR)/persistent_harness_SuaS_v2.c \
+		-I./install_instrumented/include \
+		-L./install_instrumented/lib \
+		-lpng12 -lz -lm \
+		$(CFLAGS) $(LDFLAGS) \
+		-o persistent_png_harness
+
 # 5. Main Build Target (Compiles Lib + Harness)
 build: build-harness-instrumented
 	@echo "✅ Build complete. Run 'make fuzz' to start."
 
 build-minimized: build-harness-min
 	@echo "✅ Build complete. Run 'make new_fuzz' to start with minimized seeds."
+
+build-opti: build-harness-opti
+	@echo "✅ Build complete. Run 'make optifuzz' to start with optimized seeds."
 
 # 6. Run Fuzzing Campaign (White-Box)
 fuzz: build
@@ -77,13 +88,13 @@ new_fuzz: build-minimized
 	export AFL_SKIP_CPUFREQ=1; \
 	afl-fuzz -i interesting_seeds -o minimized_findings -x png.dict -- ./png_harness
 
-optifuzz: build 
+optifuzz: build-opti
 	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \ 
-	export AFL_SKIP_CPUFREQ=1; \ 
+	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
+	export AFL_SKIP_CPUFREQ=1; \
 	export AFL_FAST_CAL=1; \
-	export AFL_DISABLE_TRIM=0; \ 
-	afl-fuzz -i minimized_seeds/ -o min_findings -x png.dict -- ./png_harness
+	export AFL_DISABLE_TRIM=0; \
+	afl-fuzz -i interesting_seeds/ -o persistent_findings_v2 -x png.dict -- ./persistent_png_harness
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
