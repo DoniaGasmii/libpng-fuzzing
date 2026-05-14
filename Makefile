@@ -108,7 +108,7 @@ build-lib-vanilla: patch-libpng
 	make -j$(nproc) && make install
 
 build-vanilla: build-lib-vanilla
-	$(CC_VANILLA) $(SRC_DIR)/harness.c \
+	$(CC_VANILLA) $(SRC_DIR)/harness_SuaS_v2.c \
 		-I./install_vanilla/include \
 		-L./install_vanilla/lib \
 		-lpng12 -lz -lm \
