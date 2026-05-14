@@ -65,26 +65,14 @@ build-harness-opti: build-instrumented-lib
 
 # 5. Main Build Target (Compiles Lib + Harness)
 build: build-harness-instrumented
-	@echo "✅ Build complete. Run 'make fuzz' to start."
+	@echo "Build complete. Run 'make fuzz' to start."
 
 build-minimized: build-harness-min
-	@echo "✅ Build complete. Run 'make new_fuzz' to start with minimized seeds."
+	@echo "Build complete. Run 'make new_fuzz' to start with minimized seeds."
 
 build-opti: build-harness-opti
-	@echo "✅ Build complete. Run 'make optifuzz' to start with optimized seeds."
+	@echo "Build complete. Run 'make optifuzz' to start with optimized seeds."
 
-# 6. Run Fuzzing Campaign (White-Box)
-fuzz: build
-	mkdir -p findings
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
-	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i final_seeds -o findings -x png.dict -- ./png_harness
-
-min_fuzz: build 
-	mkdir -p $(FINDINGS_DIR) 
-	export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1; \
-	export AFL_SKIP_CPUFREQ=1; \
-	afl-fuzz -i minimized_seeds -o minimized_findings -x png.dict -- ./png_harness
 
 new_fuzz: build-minimized 
 	mkdir -p $(FINDINGS_DIR) 
@@ -118,8 +106,9 @@ build-vanilla: build-lib-vanilla
 		-lpng12 -lz -lm \
 		$(CFLAGS_NOASAN) \
 		-o png_harness_qemu
-	@echo "✅ Vanilla harness built: png_harness_qemu"
+	@echo "Vanilla harness built: png_harness_qemu"
 
+# Build Non-ASan Library 
 
 build-lib-no-asan: patch-libpng
 	cd $(LIBPNG_DIR) && \
@@ -137,25 +126,7 @@ build-no-asan: build-lib-no-asan
 		-lpng12 -lz -lm \
 		$(CFLAGS_NOASAN) \
 		-o png_harness_no_asan
-	@echo "✅ No-ASan harness built: png_harness_no_asan"
-
-# 7. Build Vanilla Library (No Instrumentation, No Sanitizers)
-build-vanilla-lib: $(LIBPNG_DIR)
-	# Ensure patch is applied here too so comparison is fair regarding CRC
-	cd $(LIBPNG_DIR) && patch -p0 < /opt/aflpp/utils/libpng_no_checksum/libpng-nocrc.patch || true
-	cd $(LIBPNG_DIR) && \
-	CC=$(CC_VANILLA) CFLAGS="-g -O1" \
-	./configure --disable-shared --prefix=$(shell pwd)/install_vanilla && \
-	make -j$(nproc) && make install
-
-# 8. Build Harness (Vanilla)
-build-harness-vanilla: build-vanilla-lib
-	$(CC_VANILLA) $(SRC_DIR)/harness_CVE-2016-10087.c \
-		-I./install_vanilla/include \
-		-L./install_vanilla/lib \
-		-lpng12 -lz -lm \
-		-g -O1 \
-		-o png_harness_qemu
+	@echo "No-ASan harness built: png_harness_no_asan"
 
 fuzz-no-asan: build-no-asan
 	mkdir -p $(FINDINGS_NOASAN)
