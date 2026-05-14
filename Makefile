@@ -98,8 +98,17 @@ optifuzz: build-opti
 
 # --- BLACK-BOX / QEMU MODE TARGETS ---
 
+build-lib-vanilla: patch-libpng
+	cd $(LIBPNG_DIR) && \
+	make distclean || true && \
+	CC=$(CC_VANILLA) CFLAGS="$(CFLAGS_NOASAN)" \
+	./configure --disable-shared \
+	            --prefix=$(shell pwd)/install_vanilla \
+	            --host=x86_64-linux-gnu && \
+	make -j$(nproc) && make install
+
 build-vanilla: build-lib-vanilla
-	$(CC_VANILLA) $(SRC_DIR)/harness_SuaS_v2.c \
+	$(CC_VANILLA) $(SRC_DIR)/harness.c \
 		-I./install_vanilla/include \
 		-L./install_vanilla/lib \
 		-lpng12 -lz -lm \
